@@ -63,3 +63,21 @@ appliance report, not completion of the full audio/architecture/recovery matrix.
 
 The 0.1.2 prerelease makes a versioned build available for the appliance testing
 above; it does not claim that those acceptance gates have passed.
+
+## Independent speech roles in the optional OpenChamber hook
+
+The gateway already supports either Wyoming role without the other. The optional
+hook initially depended on a nonempty voice listing during target discovery;
+that client-side dependency is now removed. It uses the gateway's readiness and
+selected-role metadata for TTS-only, STT-only, and combined setups, retaining a
+voice-list fallback for other TTS servers. Generic health alone is not treated
+as proof of transcription support.
+
+Local integration tests run the actual Node proxy through the real wrapper and
+pinned upstream gateway to synthetic Wyoming TTS/ASR services with the unused
+provider actually absent. They verify valid WAV output, multipart transcription,
+and expected unavailable-role responses. These are protocol/transport tests,
+not real speech-model or full HAOS lifecycle validation. The proxy's default
+upstream idle deadline is now five minutes, configurable within bounded limits.
+
+This update is to the separately installed hook, not a gateway image release.

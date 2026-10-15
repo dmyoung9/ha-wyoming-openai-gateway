@@ -116,6 +116,9 @@ see the **[loopback startup-hook workaround](examples/openchamber/README.md)**.
 That hook belongs in the OpenCode/OpenChamber container, not this gateway app.
 An upstream configuration option is requested in
 [magnusoverli/opencode#185](https://github.com/magnusoverli/opencode/issues/185).
+The updated hook discovers a ready gateway with **TTS, STT, or both**; it does
+not require Piper for a Whisper-only setup. Use its printed loopback base URL
+for whichever OpenChamber speech roles you enable.
 
 1. Open OpenChamber's voice/TTS provider settings.
 2. Select a **custom/OpenAI-compatible** provider.

@@ -4,39 +4,25 @@ import io
 import json
 import os
 import re
-import shutil
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 
 import pytest
 
 from support import TOKEN_SENTINEL, wait_until
-
-HOOK = Path(__file__).parents[1] / "examples/openchamber/10-openchamber-loopback-proxy.sh"
-
-
-@pytest.fixture
-def proxy_program(tmp_path):
-    node = shutil.which("node")
-    if not node:
-        pytest.skip("Node.js is required for the optional OpenChamber hook tests")
-    source = HOOK.read_text().split("<<'PROXY_EOF'\n", 1)[1].split("\nPROXY_EOF\n", 1)[0]
-    program = tmp_path / "proxy.mjs"
-    program.write_text(source)
-    subprocess.run([node, "--check", str(program)], check=True, capture_output=True)
-    return node, program
 
 
 @pytest.fixture
 def speech_server():
     state = {"paths": [], "speech_auth": [], "body": b"", "map": "network",
              "v2": False, "voices": True, "bad_json": False, "redirect": False,
-             "oversized": False}
+             "oversized": False, "readiness": None, "post_path": None,
+             "content_type": None, "delay": 0}
     audio = io.BytesIO()
     with wave.open(audio, "wb") as output:
         output.setparams((1, 2, 16000, 0, "NONE", "not compressed"))
@@ -86,6 +72,8 @@ def speech_server():
                     "udp": {"network": {f"{port}/udp": port}},
                 }
                 self.reply({"data": {"dns": ["127.0.0.1"], **shapes[state["map"]]}})
+            elif self.path == "/readyz" and state["readiness"] is not None:
+                self.reply(state["readiness"])
             elif self.path == "/v1/voices":
                 state["speech_auth"].append(self.headers.get("Authorization"))
                 self.reply({"voices": [{"id": "demo"}] if state["voices"] else []})
@@ -94,8 +82,14 @@ def speech_server():
 
         def do_POST(self):
             state["body"] = self.rfile.read(int(self.headers.get("Content-Length", "0")))
+            state["post_path"] = self.path
+            state["content_type"] = self.headers.get("Content-Type")
             state["speech_auth"].append(self.headers.get("Authorization"))
-            self.reply(state["audio"], content_type="audio/wav")
+            time.sleep(state["delay"])
+            if self.path in ("/v1/audio/transcriptions", "/v1/audio/translations"):
+                self.reply({"text": "synthetic transcript"})
+            else:
+                self.reply(state["audio"], content_type="audio/wav")
 
         def log_message(self, *_args):
             pass
@@ -118,7 +112,8 @@ def launch(proxy_program, tmp_path, speech_server, **overrides):
     environment = dict(os.environ, SUPERVISOR_TOKEN=TOKEN_SENTINEL,
                        OPENCHAMBER_PROXY_SUPERVISOR_URL=f"http://127.0.0.1:{server.server_port}",
                        OPENCHAMBER_PROXY_LISTEN_HOST="127.0.0.1", OPENCHAMBER_PROXY_PORT="0",
-                       OPENCHAMBER_PROXY_DNS_FAMILY="4", OPENCHAMBER_PROXY_TARGET_SLUG="")
+                       OPENCHAMBER_PROXY_DNS_FAMILY="4", OPENCHAMBER_PROXY_TARGET_SLUG="",
+                       OPENCHAMBER_PROXY_UPSTREAM_TIMEOUT_MS="300000")
     environment.update(overrides)
     log = tmp_path / "proxy.log"
     with log.open("w") as output:
@@ -242,3 +237,90 @@ def test_request_dns_lookup_has_deadline(proxy_program, tmp_path, speech_server)
         with pytest.raises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(base + "/voices", timeout=8)
         assert error.value.code == 502
+
+
+def readiness(*roles):
+    return {
+        "ready": bool(roles), "gateway": {"healthy": bool(roles)},
+        **{role: {"status": "selected" if role in roles else "disabled",
+                  "provider": {"capabilities": ["asr" if role == "stt" else "tts"]}
+                  if role in roles else None} for role in ("tts", "stt")},
+    }
+
+
+@pytest.mark.parametrize("roles", [("tts",), ("stt",), ("tts", "stt")])
+def test_ready_gateway_discovery_does_not_depend_on_voice_listing(
+    proxy_program, tmp_path, speech_server, roles,
+):
+    _server, state = speech_server
+    state.update(readiness=readiness(*roles), voices=False)
+    with launch(proxy_program, tmp_path, speech_server) as (process, log):
+        listening_url(process, log)
+        assert "/readyz" in state["paths"]
+        assert "/v1/voices" not in state["paths"]
+
+
+@pytest.mark.parametrize("body", [
+    {"status": "ok"}, readiness(),
+    {**readiness("stt"), "ready": False},
+    {**readiness("stt"), "gateway": {"healthy": False}},
+    {**readiness(), "ready": True, "gateway": {"healthy": True}},
+    {**readiness("stt"), "stt": {"status": "selected", "provider": {}}},
+    {**readiness("stt"), "stt": {"status": "ambiguous", "provider": {"capabilities": ["asr"]}}},
+])
+def test_health_alone_or_invalid_role_metadata_does_not_prove_stt_support(
+    proxy_program, tmp_path, speech_server, body,
+):
+    _server, state = speech_server
+    state.update(readiness=body, voices=False)
+    with launch(proxy_program, tmp_path, speech_server) as (process, log):
+        assert process.wait(timeout=10) == 1
+        assert "custom speech server at:" not in log.read_text()
+
+
+@pytest.mark.parametrize("route", ["transcriptions", "translations"])
+def test_whisper_only_proxy_preserves_multipart_body_and_json_response(
+    proxy_program, tmp_path, speech_server, route,
+):
+    _server, state = speech_server
+    state.update(readiness=readiness("stt"), voices=False)
+    boundary = "speech-test-boundary"
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n"
+            f"whisper-1\r\n--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; "
+            f"filename=\"sample.wav\"\r\nContent-Type: audio/wav\r\n\r\n").encode()
+    body += state["audio"] + f"\r\n--{boundary}--\r\n".encode()
+    content_type = f"multipart/form-data; boundary={boundary}"
+    with launch(proxy_program, tmp_path, speech_server) as (process, log):
+        base = listening_url(process, log)
+        request = urllib.request.Request(base + "/audio/" + route, data=body,
+                                         headers={"Content-Type": content_type})
+        with urllib.request.urlopen(request, timeout=3) as response:
+            assert response.headers["Content-Type"].startswith("application/json")
+            assert json.load(response) == {"text": "synthetic transcript"}
+        assert state["body"] == body
+        assert state["content_type"] == content_type
+        assert state["post_path"] == f"/v1/audio/{route}"
+        assert "synthetic transcript" not in log.read_text()
+
+
+def test_upstream_timeout_is_configurable_and_still_bounded(proxy_program, tmp_path, speech_server):
+    _server, state = speech_server
+    state.update(readiness=readiness("stt"), voices=False, delay=1.4)
+    with launch(proxy_program, tmp_path, speech_server,
+                OPENCHAMBER_PROXY_UPSTREAM_TIMEOUT_MS="1000") as (process, log):
+        base = listening_url(process, log)
+        with pytest.raises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(urllib.request.Request(base + "/audio/transcriptions",
+                                                         data=b"test"), timeout=4)
+        assert error.value.code == 502
+
+
+@pytest.mark.parametrize("value", ["NaN", "0", "-1", "300001"])
+def test_invalid_upstream_timeout_is_rejected_before_discovery(
+    proxy_program, tmp_path, speech_server, value,
+):
+    _server, state = speech_server
+    with launch(proxy_program, tmp_path, speech_server,
+                OPENCHAMBER_PROXY_UPSTREAM_TIMEOUT_MS=value) as (process, _log):
+        assert process.wait(timeout=5) == 1
+        assert state["paths"] == []

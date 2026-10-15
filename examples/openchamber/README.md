@@ -33,8 +33,10 @@ OpenChamber's loopback interface.
 
 ## Install
 
-1. Start Wyoming OpenAI Gateway and Piper. Confirm `/v1/voices` returns a
-   nonempty list. Whisper-only installations cannot be discovered by this hook.
+1. Start Wyoming OpenAI Gateway and **Piper, Whisper, or both**. Confirm the
+   gateway's `/readyz` returns HTTP 200 with at least one selected provider.
+   Piper is not required for Whisper-only operation; Whisper is not required
+   for Piper-only operation.
 2. In the **OpenCode add-on's Configuration** tab, enable **Startup hooks
    (beta)** (`user_hooks_enabled: true`) and restart it. This creates
    `<Home Assistant config>/opencode/startup.d/` for the stable add-on.
@@ -62,6 +64,10 @@ OpenChamber's loopback interface.
    http://127.0.0.1:8555/v1
    ```
 
+Use that same loopback base URL for OpenChamber's **STT**, **TTS**, or both
+custom server settings, according to the providers you run. Transcriptions and
+translations use multipart uploads; the proxy preserves the body and headers.
+
 That URL is used by the OpenChamber **backend inside the container**, not by
 your phone/browser directly. No new host port mapping is needed. Your gateway's
 existing HA host-port mapping is unrelated to this internal route.
@@ -69,6 +75,12 @@ existing HA host-port mapping is unrelated to this internal route.
 The hook writes `/data/openchamber-loopback-proxy/proxy.mjs` and appends to
 `/data/openchamber-loopback-proxy/proxy.log` in the **OpenCode container**.
 Edit the persistent `.sh` hook: `proxy.mjs` is regenerated on each start.
+
+**Updating an older copy:** replace the persistent hook file and restart the
+**OpenCode/OpenChamber add-on**. Rerunning the hook while the old proxy is alive
+does not replace it. This is an update to the optional hook, not the gateway
+image; refreshing/updating the gateway alone will not update the other
+container's hook.
 
 The host image must provide Bash, Node.js 20+, `setsid`, `pgrep`, and `flock`.
 No npm packages or extra Python dependencies are required. See the upstream
@@ -81,15 +93,24 @@ No npm packages or extra Python dependencies are required. See the upstream
 - Reads each app's info through v2 or legacy endpoints. Uses its DNS name and
   declared **internal TCP port keys**, not published host-port values.
 - Probes at most 64 apps and eight ports each, with 16 concurrent HTTP probes.
-  The first successful `/v1/voices` response with a nonempty list wins.
+- Probes the gateway's `/readyz` for healthy, selected TTS and/or STT
+  capabilities. **Piper-only, Whisper-only, and combined gateways all qualify.**
+  A generic HTTP 200 or health response alone does not prove STT support.
+- For other TTS servers without gateway readiness metadata, a nonempty
+  `/v1/voices` response remains the compatibility fallback. Arbitrary STT-only
+  APIs without capability metadata are not automatically detected.
+- The first verified speech API wins; the chosen TTS/STT roles are logged.
 - **Multiple speech gateways:** first-response selection is not deterministic.
   Pin a full Supervisor slug using the optional setting below rather than
   assuming which server will be chosen.
 - Re-resolves the chosen DNS name on each proxied request, so a replacement
   container IP is picked up. DNS, metadata, and upstream idle waits are bounded;
   audio streams through without whole-response buffering.
-- Discovery occurs **at startup only**. If the gateway/Piper is not ready yet,
-  the proxy exits; start them and rerun the hook. It does not automatically
+- Upstream idle timeout defaults to **five minutes**, matching the gateway
+  instead of imposing the old 30-second proxy limit on Whisper. Other client
+  and gateway deadlines still apply.
+- Discovery occurs **at startup only**. If the gateway or its provider(s) are
+  not ready yet, the proxy exits; start them and rerun the hook. It does not automatically
   retry initial discovery or discover a renamed target/new port later.
 - This is a detached hook process, **not a supervised add-on service**. If it
   crashes, rerun the hook. The hook's three-second check confirms only that the
@@ -111,6 +132,8 @@ Export these near the top of the **hook file**, before it launches Node:
 export OPENCHAMBER_PROXY_TARGET_SLUG="your_repo_wyoming_openai_gateway"
 # Choose a stable unused port if 8555 is already taken.
 export OPENCHAMBER_PROXY_PORT=8556
+# Optional upstream idle timeout, in milliseconds (1000 through 300000).
+export OPENCHAMBER_PROXY_UPSTREAM_TIMEOUT_MS=300000
 ```
 
 These are proxy settings, not OpenChamber settings. The default target is
@@ -156,7 +179,11 @@ and request cleanup. It is not a byte-for-byte copy of the original hook.
 Tests execute the embedded JS against loopback HTTP fixtures for both inventory
 APIs, port-map shapes, audio streaming, port collisions, invalid/oversized
 metadata, rejected redirects/origins, credential non-forwarding, and a stalled
-DNS lookup. The Bash wrapper is syntax-checked and ShellCheck-checked, not run
+DNS lookup. Role-matrix tests additionally run the actual Node proxy through the
+real gateway wrapper and pinned upstream gateway to synthetic Wyoming providers:
+TTS only, STT only, and both. These verify WAV output, multipart transcription,
+and unavailable-role responses; they are not tests of real speech model quality.
+The Bash wrapper is syntax-checked and ShellCheck-checked, not run
 against `/data` by the tests. The guarded copy still needs its own HAOS lifecycle
 validation; the owner tested the original approach on an appliance.
 

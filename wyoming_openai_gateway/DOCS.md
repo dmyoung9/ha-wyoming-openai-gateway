@@ -18,6 +18,10 @@ If OpenChamber inside the magnusoverli/opencode Home Assistant add-on rejects
 the internal URL because remote custom servers are disabled, see the
 [optional loopback hook](https://github.com/dmyoung9/ha-wyoming-openai-gateway/tree/main/examples/openchamber).
 Install that workaround in the **OpenCode/OpenChamber container**, not here.
+Both the gateway and the updated hook support Piper-only, Whisper-only, or
+combined operation. Update the persistent hook and restart OpenCode to replace
+an older voices-only discovery script; updating this gateway alone cannot
+change the other container's hook.
 The upstream environment-option request is
 [magnusoverli/opencode#185](https://github.com/magnusoverli/opencode/issues/185).
 

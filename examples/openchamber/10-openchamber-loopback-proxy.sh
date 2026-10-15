@@ -49,13 +49,13 @@ const LISTEN_HOST = process.env.OPENCHAMBER_PROXY_LISTEN_HOST || "127.0.0.1";
 const PREFERRED_PORT = Number(process.env.OPENCHAMBER_PROXY_PORT || 8555);
 const DNS_FAMILY = Number(process.env.OPENCHAMBER_PROXY_DNS_FAMILY || 4);
 const TARGET_SLUG = process.env.OPENCHAMBER_PROXY_TARGET_SLUG || "";
+const UPSTREAM_TIMEOUT_MS = Number(process.env.OPENCHAMBER_PROXY_UPSTREAM_TIMEOUT_MS ?? 300000);
 
 const PROBE_TIMEOUT_MS = 2500;
 const MAX_APPS = 64;
 const MAX_PORTS_PER_APP = 8;
 const MAX_METADATA_BYTES = 1024 * 1024;
 const PROBE_CONCURRENCY = 16;
-const UPSTREAM_TIMEOUT_MS = 30000;
 const DNS_TIMEOUT_MS = 5000;
 let supervisorBase;
 const log = (...args) => console.log(new Date().toISOString(), "[loopback-proxy]", ...args);
@@ -139,18 +139,51 @@ function portsOf(info) {
   return [...found].slice(0, MAX_PORTS_PER_APP);
 }
 
-async function speaksOpenAISpeech(host, port) {
+function selectedGatewayRoles(body, responseOK) {
+  if (!body || typeof body !== "object" || Array.isArray(body)
+      || !Object.hasOwn(body, "ready") || !Object.hasOwn(body, "tts")
+      || !Object.hasOwn(body, "stt") || !body.gateway || typeof body.gateway !== "object"
+      || Array.isArray(body.gateway)) return null;
+
+  if (!responseOK || body.ready !== true || body.gateway.healthy !== true) return [];
+
+  const selected = [];
+  const supportsRole = (decision, capability) => decision?.status === "selected"
+    && decision.provider && typeof decision.provider === "object"
+    && Array.isArray(decision.provider.capabilities)
+    && decision.provider.capabilities.includes(capability);
+  if (supportsRole(body.tts, "tts")) selected.push("tts");
+  if (supportsRole(body.stt, "asr")) selected.push("stt");
+  return selected;
+}
+
+async function discoverSpeechRoles(host, port) {
   const ac = new AbortController();
   const timer = setTimeout(() => ac.abort(), PROBE_TIMEOUT_MS);
   try {
+    try {
+      const response = await fetch(`http://${host}:${port}/readyz`, {
+        signal: ac.signal, redirect: "error",
+      });
+      const body = await boundedJSON(response);
+      const roles = selectedGatewayRoles(body, response.ok);
+      // A recognized gateway must prove its own readiness and selected roles;
+      // /v1/voices is only a compatibility fallback for generic TTS services.
+      if (roles !== null) return roles;
+    } catch {
+      // An optional readiness endpoint may be absent or malformed. Keep the
+      // original candidate-wide deadline when trying the generic TTS fallback.
+    }
+
+    if (ac.signal.aborted) return [];
     const response = await fetch(`http://${host}:${port}/v1/voices`, {
       signal: ac.signal, redirect: "error",
     });
-    if (!response.ok) return false;
+    if (!response.ok) return [];
     const body = await boundedJSON(response);
-    return Boolean(body && Array.isArray(body.voices) && body.voices.length);
+    return body && Array.isArray(body.voices) && body.voices.length ? ["tts"] : [];
   } catch {
-    return false;
+    return [];
   } finally {
     clearTimeout(timer);
   }
@@ -227,7 +260,8 @@ async function discover() {
   const worker = async () => {
     while (queue.length && !found) {
       const candidate = queue.shift();
-      if (await speaksOpenAISpeech(candidate.host, candidate.port) && !found) found = candidate;
+      const roles = await discoverSpeechRoles(candidate.host, candidate.port);
+      if (roles.length && !found) found = { ...candidate, roles };
     }
   };
   await Promise.all(Array.from({ length: PROBE_CONCURRENCY }, worker));
@@ -302,17 +336,22 @@ try {
   if (!Number.isInteger(PREFERRED_PORT) || PREFERRED_PORT < 0 || PREFERRED_PORT > 65535) {
     throw new Error("invalid proxy port");
   }
+  if (!Number.isInteger(UPSTREAM_TIMEOUT_MS)
+      || UPSTREAM_TIMEOUT_MS < 1000 || UPSTREAM_TIMEOUT_MS > 300000) {
+    throw new Error("upstream timeout must be an integer from 1000 to 300000 milliseconds");
+  }
   if (![0, 4, 6].includes(DNS_FAMILY)) throw new Error("invalid DNS family");
   if (TARGET_SLUG && !validSlug(TARGET_SLUG)) throw new Error("invalid target app slug");
   supervisorBase = trustedSupervisorOrigin(SUPERVISOR_URL);
   if (!SUPERVISOR_TOKEN) throw new Error("SUPERVISOR_TOKEN is not set; run inside the add-on hook");
   const target = await discover();
   if (!target) {
-    log("No running app answered /v1/voices with a nonempty voice list.");
-    log("Start the gateway and Piper, wait for readiness, then re-run this hook.");
+    log("No running app reported a ready speech gateway or a nonempty /v1/voices list.");
+    log("Start the gateway and its provider(s), wait for readiness, then re-run this hook.");
     process.exit(1);
   }
-  log(`using ${target.slug} (${target.host}:${target.port})`);
+  const roleNames = target.roles.map((role) => role.toUpperCase()).join(", ");
+  log(`using ${target.slug} (${target.host}:${target.port}); roles: ${roleNames}`);
   serve(target);
 } catch (error) {
   log(`discovery failed: ${error.message}`);
