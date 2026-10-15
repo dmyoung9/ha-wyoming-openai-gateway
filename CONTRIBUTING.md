@@ -20,6 +20,16 @@ ruff check wyoming_openai_gateway/rootfs/usr/local/bin/discover.py scripts/valid
 pytest -q tests
 ```
 
+The optional OpenChamber loopback-hook tests also use Node.js (CI uses Node 24).
+`tests/test_openchamber_proxy.py` extracts the JS embedded in the single-file
+hook and exercises it with loopback HTTP fixtures; it does not execute startup
+hooks or write to `/data`. Check the Bash wrapper with:
+
+```sh
+bash -n examples/openchamber/10-openchamber-loopback-proxy.sh
+shellcheck examples/openchamber/10-openchamber-loopback-proxy.sh
+```
+
 Test against actual Home Assistant OS/Supervisor as well; local tests and
 container builds do not establish Supervisor compatibility. Do not change the
 upstream source commit or dependency lock without reviewing upstream changes,

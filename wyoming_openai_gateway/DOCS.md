@@ -14,6 +14,13 @@ The default endpoint is port `8555`, with the API under `/v1/`.
 The pinned upstream commit `a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae` provides
 WAV speech output. MP3 output is not supported.
 
+If OpenChamber inside the magnusoverli/opencode Home Assistant add-on rejects
+the internal URL because remote custom servers are disabled, see the
+[optional loopback hook](https://github.com/dmyoung9/ha-wyoming-openai-gateway/tree/main/examples/openchamber).
+Install that workaround in the **OpenCode/OpenChamber container**, not here.
+The upstream environment-option request is
+[magnusoverli/opencode#185](https://github.com/magnusoverli/opencode/issues/185).
+
 ## Options
 
 Upgrading from 0.1.0 fixes an inventory permission error: discovery now uses

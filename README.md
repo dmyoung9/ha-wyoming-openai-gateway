@@ -110,6 +110,13 @@ Replace `HOME_ASSISTANT_IP` with the IP address of your Home Assistant OS applia
 
 ### OpenChamber example
 
+**OpenChamber inside the magnusoverli/opencode Home Assistant add-on:** if it
+rejects the gateway's internal URL because remote custom servers are disabled,
+see the **[loopback startup-hook workaround](examples/openchamber/README.md)**.
+That hook belongs in the OpenCode/OpenChamber container, not this gateway app.
+An upstream configuration option is requested in
+[magnusoverli/opencode#185](https://github.com/magnusoverli/opencode/issues/185).
+
 1. Open OpenChamber's voice/TTS provider settings.
 2. Select a **custom/OpenAI-compatible** provider.
 3. Set the server/base URL to `http://HOME_ASSISTANT_IP:8555/v1/` (or your HTTPS gateway URL).
@@ -236,7 +243,8 @@ Issue tracker: https://github.com/dmyoung9/ha-wyoming-openai-gateway/issues
 
 ## Validation and known limitations
 
-**Verified:** 33 automated tests, synthetic Wyoming TTS/STT through the real
+**Verified:** 33 gateway automated tests plus optional proxy-hook tests,
+synthetic Wyoming TTS/STT through the real
 pinned gateway and wrapper, Supervisor metadata schemas, lint and security
 checks, and successful **amd64 and arm64 image builds and no-provider smoke
 tests** in [CI](https://github.com/dmyoung9/ha-wyoming-openai-gateway/actions).
