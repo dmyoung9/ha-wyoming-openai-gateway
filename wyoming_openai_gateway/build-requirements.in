@@ -3,4 +3,4 @@
 # --no-build-isolation.
 setuptools>=80,<85
 wheel>=0.45,<1
-cffi>=1.17,<3
+cffi>=2.1.1,<3
