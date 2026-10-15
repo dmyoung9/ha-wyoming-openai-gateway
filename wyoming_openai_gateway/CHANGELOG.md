@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.2 — 2026-10-15 (prerelease)
+
+- Add timestamped INFO logs for verified Wyoming server slugs, internal hosts,
+  ports, capabilities, and selected TTS/STT destinations.
+- Log installed voice IDs and languages, with bounded/sanitized summaries also
+  available in `/status`.
+- Log provider/catalog changes, outages, and recovery without repeating healthy
+  discovery polls. Voice-only changes do not restart the gateway child.
+- Reuse the existing Describe probe; no extra network requests are added solely
+  for logging. Speech text, audio, and credentials remain excluded.
+- Add tests for metadata extraction, logging transitions, catalog-only updates,
+  privacy, and control-character sanitization.
+
 ## 0.1.1 — 2026-10-15 (prerelease)
 
 - Fix discovery failing with `supervisor_http_error`: obtain installed-app

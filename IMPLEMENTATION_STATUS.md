@@ -1,6 +1,6 @@
 # Implementation and release evidence
 
-Version 0.1.1 is a prerelease for initial HAOS testing, not a stable or
+Version 0.1.2 is a prerelease for HAOS acceptance testing, not a stable or
 HAOS-validated release. `IMPLEMENTATION_PLAN.md` remains the original design.
 
 ## Implemented design
@@ -11,6 +11,9 @@ HAOS-validated release. `IMPLEMENTATION_PLAN.md` remains the original design.
   providers. Published host ports are not used as internal destination ports.
 - Home Assistant app options provide explicit provider selection; a separate
   configuration UI is unnecessary for v1. `none` disables a role.
+- INFO logs show verified provider endpoints, selected roles, bounded voice
+  catalogs, and changes/recovery without repeating unchanged polls or logging
+  speech/request content. Voice-only changes do not restart the gateway child.
 - The upstream gateway is pinned to commit
   `a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae` and runs as a supervised child
   listening only on loopback. Endpoint changes require a child restart.
@@ -21,7 +24,7 @@ HAOS-validated release. `IMPLEMENTATION_PLAN.md` remains the original design.
 
 ## Evidence and limits
 
-Local verification on Python 3.13 passed 28 tests, including synthetic Wyoming
+Local verification on Python 3.13 passed 33 tests, including synthetic Wyoming
 WAV synthesis and multipart transcription through the real pinned gateway and
 wrapper (both roles and each role alone), transcript-log suppression, discovery
 and ambiguity, startup deadlines, child recycling, request limits, and SIGTERM.
@@ -55,7 +58,8 @@ patterns revealed that the `default` role allows `/supervisor/info` and provider
 info requests, but not the `/addons` inventory list used by 0.1.0. Version 0.1.1
 uses the installed-app inventory in `/supervisor/info`, with a reproducing HTTP
 regression test and pinned Supervisor ACL validation. No privileges were added.
-Confirmation of provider discovery on the appliance remains pending.
+The owner subsequently confirmed that 0.1.1 works. This is the first working
+appliance report, not completion of the full audio/architecture/recovery matrix.
 
-The 0.1.1 prerelease makes a versioned build available for the appliance testing
+The 0.1.2 prerelease makes a versioned build available for the appliance testing
 above; it does not claim that those acceptance gates have passed.

@@ -1,6 +1,6 @@
 name: Wyoming OpenAI Gateway
 slug: wyoming_openai_gateway
-version: "0.1.1"
+version: "0.1.2"
 description: OpenAI-compatible speech APIs backed by Home Assistant Wyoming apps
 url: https://github.com/dmyoung9/ha-wyoming-openai-gateway
 arch:

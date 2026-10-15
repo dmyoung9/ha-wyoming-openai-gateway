@@ -23,7 +23,7 @@ RUN git clone --filter=blob:none https://github.com/Archmonger/Wyoming-OpenAI-Ga
     && cp /build/LICENSE.wrapper /build/LICENSE.upstream /build/NOTICE.md /wheels/
 
 FROM ${PYTHON_IMAGE} AS runtime
-ARG BUILD_VERSION=0.1.1
+ARG BUILD_VERSION=0.1.2
 ARG BUILD_ARCH=amd64
 LABEL io.hass.version="${BUILD_VERSION}" \
       io.hass.type="app" \

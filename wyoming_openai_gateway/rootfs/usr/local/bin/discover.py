@@ -68,6 +68,12 @@ WYOMING_TIMEOUT_SECONDS = 2.5
 WYOMING_LINE_LIMIT = 64 * 1024
 WYOMING_DATA_LIMIT = 512 * 1024
 WYOMING_PAYLOAD_LIMIT = 1024
+WYOMING_INFO_SERVICE_LIMIT = 128
+WYOMING_VOICE_LIMIT = 32
+WYOMING_VOICE_NAME_LIMIT = 96
+WYOMING_LANGUAGE_LIMIT = 8
+WYOMING_LANGUAGE_LENGTH_LIMIT = 32
+DISCOVERY_LOG_STATE_LIMIT = 16
 
 MAX_REQUEST_BYTES = 25 * 1024 * 1024
 MAX_RESPONSE_BYTES = 64 * 1024 * 1024
@@ -321,24 +327,48 @@ def adapter_for_addon(
 
 
 @dataclass(frozen=True, slots=True)
+class VoiceInfo:
+    """A bounded, privacy-safe voice identifier and its advertised languages."""
+
+    name: str
+    languages: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WyomingDescription:
+    """Normalized capabilities and installed voices from one Describe response."""
+
+    capabilities: frozenset[str]
+    voices: tuple[VoiceInfo, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderEndpoint:
     slug: str
     name: str
     host: str
     port: int
     capabilities: frozenset[str]
+    voices: tuple[VoiceInfo, ...] = ()
 
     def supports(self, role: str) -> bool:
         return role in self.capabilities
 
     def public_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "slug": self.slug,
             "name": self.name,
             "host": self.host,
             "port": self.port,
             "capabilities": sorted(self.capabilities),
         }
+        voices = _normalize_voice_catalog(self.voices)
+        if voices:
+            result["voices"] = [
+                {"name": voice.name, "languages": list(voice.languages)}
+                for voice in voices
+            ]
+        return result
 
 
 @dataclass(frozen=True, slots=True)
@@ -446,8 +476,75 @@ def _parse_wyoming_event(reader: Any) -> dict[str, Any]:
     return {"type": header["type"], "data": event_data}
 
 
-def capabilities_from_info_event(event: Mapping[str, Any]) -> frozenset[str]:
-    """Extract installed TTS/ASR capabilities from a Wyoming `info` event."""
+def _safe_metadata_text(value: Any, limit: int) -> str | None:
+    """Bound an explicit schema string and neutralize log-control characters."""
+
+    if not isinstance(value, str):
+        return None
+    cleaned = "".join(character if character.isprintable() else " " for character in value)
+    cleaned = " ".join(cleaned.split())
+    if len(cleaned) > limit:
+        cleaned = cleaned[:limit - 1].rstrip() + "…"
+    return cleaned or None
+
+
+def _language_codes(value: Any) -> tuple[str, ...]:
+    """Extract explicit Wyoming language codes, not arbitrary nested metadata."""
+
+    if not isinstance(value, (list, tuple)):
+        return ()
+
+    result: set[str] = set()
+    for item in value[:WYOMING_LANGUAGE_LIMIT]:
+        language = _safe_metadata_text(item, WYOMING_LANGUAGE_LENGTH_LIMIT)
+        if language:
+            result.add(language)
+    return tuple(sorted(result))
+
+
+def _normalize_voice_catalog(voices: Any) -> tuple[VoiceInfo, ...]:
+    """Return a deterministic, bounded catalog safe for status and log output."""
+
+    if not isinstance(voices, (list, tuple)):
+        return ()
+    normalized: dict[str, set[str]] = {}
+    for voice in voices[:WYOMING_VOICE_LIMIT]:
+        if not isinstance(voice, VoiceInfo):
+            continue
+        name = _safe_metadata_text(voice.name, WYOMING_VOICE_NAME_LIMIT)
+        if not name:
+            continue
+        languages = _language_codes(voice.languages)
+        normalized.setdefault(name, set()).update(languages)
+    return tuple(
+        VoiceInfo(name, tuple(sorted(languages)[:WYOMING_LANGUAGE_LIMIT]))
+        for name, languages in sorted(normalized.items())[:WYOMING_VOICE_LIMIT]
+    )
+
+
+def _voices_from_tts_services(services: list[Any]) -> tuple[VoiceInfo, ...]:
+    """Read the voice names used as IDs by the pinned gateway's /v1/voices."""
+
+    voices: list[VoiceInfo] = []
+    for service in services[:WYOMING_INFO_SERVICE_LIMIT]:
+        if not isinstance(service, dict) or service.get("installed") is False:
+            continue
+        collection = service.get("voices")
+        if not isinstance(collection, list):
+            continue
+        for item in collection[:WYOMING_VOICE_LIMIT]:
+            if not isinstance(item, dict) or item.get("installed") is False:
+                continue
+            name = _safe_metadata_text(item.get("name"), WYOMING_VOICE_NAME_LIMIT)
+            if name:
+                voices.append(VoiceInfo(name, _language_codes(item.get("languages"))))
+                if len(voices) >= WYOMING_VOICE_LIMIT:
+                    return _normalize_voice_catalog(voices)
+    return _normalize_voice_catalog(voices)
+
+
+def description_from_info_event(event: Mapping[str, Any]) -> WyomingDescription:
+    """Extract installed TTS/ASR capabilities and an optional voice catalog."""
 
     if event.get("type") != "info":
         raise DiscoveryError("wyoming_describe_not_info")
@@ -456,10 +553,13 @@ def capabilities_from_info_event(event: Mapping[str, Any]) -> frozenset[str]:
         raise DiscoveryError("wyoming_invalid_info")
 
     capabilities: set[str] = set()
+    tts_services: list[Any] = []
     for event_key, role in (("tts", "tts"), ("asr", "asr")):
         services = data.get(event_key, [])
-        if not isinstance(services, list) or len(services) > 128:
+        if not isinstance(services, list) or len(services) > WYOMING_INFO_SERVICE_LIMIT:
             raise DiscoveryError("wyoming_invalid_info")
+        if role == "tts":
+            tts_services = services
         # The Wyoming Info schema represents each service/program as an object
         # with `installed`; older servers may omit that field, so a well-shaped
         # entry is accepted unless it explicitly says it is unavailable.
@@ -470,11 +570,38 @@ def capabilities_from_info_event(event: Mapping[str, Any]) -> frozenset[str]:
             capabilities.add(role)
     if not capabilities:
         raise DiscoveryError("wyoming_no_speech_capability")
-    return frozenset(capabilities)
+    # Voice catalogs are optional metadata. Ignore malformed entries rather than
+    # letting them invalidate an otherwise healthy Describe capability response.
+    voices = _voices_from_tts_services(tts_services)
+    return WyomingDescription(frozenset(capabilities), voices)
 
 
-def probe_wyoming(host: str, port: int, timeout: float = WYOMING_TIMEOUT_SECONDS) -> frozenset[str]:
-    """Send one bounded Wyoming `describe` event and return advertised roles."""
+def capabilities_from_info_event(event: Mapping[str, Any]) -> frozenset[str]:
+    """Extract installed TTS/ASR capabilities from a Wyoming `info` event."""
+
+    return description_from_info_event(event).capabilities
+
+
+def normalize_wyoming_description(value: Any) -> WyomingDescription:
+    """Normalize production descriptions and legacy injected capability probes."""
+
+    if isinstance(value, WyomingDescription):
+        capabilities = frozenset(
+            capability for capability in value.capabilities if capability in {"tts", "asr"}
+        )
+        return WyomingDescription(capabilities, _normalize_voice_catalog(value.voices))
+    if isinstance(value, frozenset):
+        capabilities = frozenset(
+            capability for capability in value if capability in {"tts", "asr"}
+        )
+        return WyomingDescription(capabilities)
+    raise TypeError("probe must return WyomingDescription or frozenset capabilities")
+
+
+def describe_wyoming(
+    host: str, port: int, timeout: float = WYOMING_TIMEOUT_SECONDS
+) -> WyomingDescription:
+    """Send one bounded Wyoming `describe` event and return its safe summary."""
 
     try:
         with socket.create_connection((host, port), timeout=timeout) as connection:
@@ -489,7 +616,13 @@ def probe_wyoming(host: str, port: int, timeout: float = WYOMING_TIMEOUT_SECONDS
         raise
     except (OSError, TimeoutError, ValueError):
         raise DiscoveryError("wyoming_unavailable") from None
-    return capabilities_from_info_event(event)
+    return description_from_info_event(event)
+
+
+def probe_wyoming(host: str, port: int, timeout: float = WYOMING_TIMEOUT_SECONDS) -> frozenset[str]:
+    """Compatibility probe returning only the advertised capabilities."""
+
+    return describe_wyoming(host, port, timeout).capabilities
 
 
 def probe_gateway_health(
@@ -517,7 +650,7 @@ def probe_gateway_health(
 
 def discover_providers(
     supervisor: SupervisorClient,
-    probe: Callable[[str, int], frozenset[str]] = probe_wyoming,
+    probe: Callable[[str, int], WyomingDescription | frozenset[str]] = describe_wyoming,
     explicit_slugs: Iterable[str] = (),
 ) -> tuple[list[ProviderEndpoint], list[str]]:
     """Inventory and verify bounded adapters plus explicitly selected metadata."""
@@ -561,7 +694,7 @@ def discover_providers(
             adapter = ProviderAdapter(slug, metadata_port, require_port_metadata=True)
         host = slug_to_dns_name(slug)
         try:
-            capabilities = probe(host, adapter.internal_port)
+            description = normalize_wyoming_description(probe(host, adapter.internal_port))
         except DiscoveryError as error:
             warnings.append(f"{slug}:{error.category}")
             continue
@@ -573,7 +706,14 @@ def discover_providers(
         if not isinstance(name, str) or not name:
             name = slug
         endpoints.append(
-            ProviderEndpoint(slug, name[:128], host, adapter.internal_port, capabilities)
+            ProviderEndpoint(
+                slug,
+                name[:128],
+                host,
+                adapter.internal_port,
+                description.capabilities,
+                description.voices,
+            )
         )
     return endpoints, warnings
 
@@ -731,7 +871,7 @@ class GatewaySupervisor:
         token: str | None,
         status: StatusStore | None = None,
         supervisor_factory: Callable[..., SupervisorClient] = SupervisorClient,
-        probe: Callable[[str, int], frozenset[str]] = probe_wyoming,
+        probe: Callable[[str, int], WyomingDescription | frozenset[str]] = describe_wyoming,
         gateway_health_probe: Callable[[], bool] = probe_gateway_health,
         popen_factory: Callable[..., subprocess.Popen[Any]] = subprocess.Popen,
         gateway_command: str | None = None,
@@ -760,6 +900,10 @@ class GatewaySupervisor:
         self._health_failure_count = 0
         self._recycle_requested = threading.Event()
         self._selected: dict[str, ProviderEndpoint] = {}
+        self._discovery_signatures: dict[str, tuple[Any, ...]] = {}
+        self._discovery_unavailable: dict[str, str] = {}
+        self._discovery_state_order: dict[str, None] = {}
+        self._logged_role_selections: dict[str, tuple[str, str, int]] = {}
         self._desired_key: tuple[tuple[str, str, int], ...] | None = None
         self._restart_count = 0
         self._next_restart_at = 0.0
@@ -867,8 +1011,7 @@ class GatewaySupervisor:
         providers, warnings = discover_providers(
             supervisor, self._probe, explicit_slugs=explicit_slugs
         )
-        for warning in warnings:
-            LOGGER.info("Provider candidate unavailable (%s)", warning)
+        self._log_discovery_changes(providers, warnings)
 
         self._last_decisions = {
             "tts": select_provider("tts", self.options.tts_provider, providers),
@@ -886,6 +1029,127 @@ class GatewaySupervisor:
         self._refresh_gateway_status()
         return dict(self._last_decisions)
 
+    @staticmethod
+    def _provider_signature(endpoint: ProviderEndpoint) -> tuple[Any, ...]:
+        voices = _normalize_voice_catalog(endpoint.voices)
+        return (
+            endpoint.host,
+            endpoint.port,
+            tuple(sorted(endpoint.capabilities)),
+            tuple((voice.name, tuple(sorted(voice.languages))) for voice in voices),
+        )
+
+    def _touch_discovery_state(self, slug: str) -> None:
+        self._discovery_state_order.pop(slug, None)
+        self._discovery_state_order[slug] = None
+        while len(self._discovery_state_order) > DISCOVERY_LOG_STATE_LIMIT:
+            oldest = next(iter(self._discovery_state_order))
+            self._discovery_state_order.pop(oldest, None)
+            self._discovery_signatures.pop(oldest, None)
+            self._discovery_unavailable.pop(oldest, None)
+
+    @staticmethod
+    def _log_voice_catalog(endpoint: ProviderEndpoint) -> None:
+        voices = _normalize_voice_catalog(endpoint.voices)
+        if not voices:
+            LOGGER.info(
+                "Wyoming voice catalog for %s: no installed voices advertised", endpoint.slug
+            )
+            return
+        for voice in voices:
+            languages = ",".join(voice.languages) if voice.languages else "unspecified"
+            LOGGER.info(
+                "Available Wyoming voice for %s: id=%s languages=%s",
+                endpoint.slug,
+                voice.name,
+                languages,
+            )
+        if len(voices) >= WYOMING_VOICE_LIMIT:
+            LOGGER.info(
+                "Voice catalog for %s is limited to %d entries; use /v1/voices for the full list",
+                endpoint.slug,
+                WYOMING_VOICE_LIMIT,
+            )
+
+    def _record_verified_provider(self, endpoint: ProviderEndpoint) -> None:
+        signature = self._provider_signature(endpoint)
+        previous = self._discovery_signatures.get(endpoint.slug)
+        was_unavailable = endpoint.slug in self._discovery_unavailable
+        self._discovery_unavailable.pop(endpoint.slug, None)
+        capabilities = ",".join(sorted(signature[2])) or "none"
+        if previous is None:
+            if was_unavailable:
+                LOGGER.info(
+                    "Recovered and verified Wyoming server slug=%s host=%s port=%d capabilities=%s",
+                    endpoint.slug,
+                    endpoint.host,
+                    endpoint.port,
+                    capabilities,
+                )
+            else:
+                LOGGER.info(
+                    "Verified Wyoming server slug=%s host=%s port=%d capabilities=%s",
+                    endpoint.slug,
+                    endpoint.host,
+                    endpoint.port,
+                    capabilities,
+                )
+            self._log_voice_catalog(endpoint)
+        elif previous != signature:
+            endpoint_changed = previous[:2] != signature[:2]
+            capabilities_changed = previous[2] != signature[2]
+            voices_changed = previous[3] != signature[3]
+            if endpoint_changed or capabilities_changed:
+                LOGGER.info(
+                    "Changed Wyoming server slug=%s host=%s port=%d capabilities=%s",
+                    endpoint.slug,
+                    endpoint.host,
+                    endpoint.port,
+                    capabilities,
+                )
+            if voices_changed:
+                LOGGER.info("Wyoming voice catalog changed for %s", endpoint.slug)
+            if endpoint_changed or capabilities_changed or voices_changed:
+                self._log_voice_catalog(endpoint)
+        self._discovery_signatures[endpoint.slug] = signature
+        self._touch_discovery_state(endpoint.slug)
+
+    def _record_unavailable_provider(self, slug: str, reason: str) -> None:
+        previous_signature = self._discovery_signatures.pop(slug, None)
+        previous_reason = self._discovery_unavailable.get(slug)
+        if previous_signature is not None:
+            LOGGER.info(
+                "Wyoming server unavailable slug=%s host=%s port=%s reason=%s",
+                slug,
+                previous_signature[0],
+                previous_signature[1],
+                reason,
+            )
+        elif previous_reason != reason:
+            LOGGER.info("Wyoming provider unavailable slug=%s reason=%s", slug, reason)
+        self._discovery_unavailable[slug] = reason
+        self._touch_discovery_state(slug)
+
+    def _log_discovery_changes(
+        self, providers: Iterable[ProviderEndpoint], warnings: Iterable[str] = ()
+    ) -> None:
+        """Log provider, capability, and voice transitions without polling noise."""
+
+        current = {endpoint.slug: endpoint for endpoint in providers}
+        failures: dict[str, str] = {}
+        for warning in warnings:
+            slug, separator, reason = warning.partition(":")
+            if separator and _SLUG_RE.fullmatch(slug):
+                failures[slug] = _safe_metadata_text(reason, 64) or "unavailable"
+
+        previous_slugs = set(self._discovery_signatures)
+        for slug in sorted(previous_slugs - current.keys() - failures.keys()):
+            self._record_unavailable_provider(slug, "no_longer_discovered")
+        for slug, reason in sorted(failures.items()):
+            self._record_unavailable_provider(slug, reason)
+        for _slug, endpoint in sorted(current.items()):
+            self._record_verified_provider(endpoint)
+
     def _selection_key(self) -> tuple[tuple[str, str, int], ...]:
         return tuple(
             (role, endpoint.host, endpoint.port)
@@ -893,6 +1157,7 @@ class GatewaySupervisor:
         )
 
     def _apply_selection(self) -> None:
+        self._log_selected_role_changes()
         desired_key = self._selection_key()
         if desired_key == self._desired_key:
             self._maybe_start_gateway()
@@ -904,6 +1169,33 @@ class GatewaySupervisor:
         self._next_restart_at = 0.0
         if desired_key:
             self._maybe_start_gateway()
+
+    def _log_selected_role_changes(self) -> None:
+        role_names = {"tts": "TTS", "asr": "STT"}
+        for role, display_name in role_names.items():
+            endpoint = self._selected.get(role)
+            identity = (
+                (endpoint.slug, endpoint.host, endpoint.port) if endpoint is not None else None
+            )
+            previous = self._logged_role_selections.get(role)
+            if identity == previous:
+                continue
+            if endpoint is not None:
+                LOGGER.info(
+                    "Selected %s Wyoming endpoint slug=%s host=%s port=%d",
+                    display_name,
+                    endpoint.slug,
+                    endpoint.host,
+                    endpoint.port,
+                )
+                self._logged_role_selections[role] = identity
+            elif previous is not None:
+                decision = self._last_decisions.get(role)
+                status = decision.status if decision is not None else "unavailable"
+                LOGGER.info(
+                    "%s Wyoming endpoint selection cleared (status=%s)", display_name, status
+                )
+                self._logged_role_selections.pop(role, None)
 
     def _maybe_start_gateway(self) -> None:
         if not self._desired_key or self._stop_event.is_set():
@@ -1092,17 +1384,41 @@ class GatewaySupervisor:
         # Inventory availability says nothing about a remembered provider's
         # liveness. Recheck those endpoints even while Supervisor retries back
         # off, rather than trusting the child's process-only /healthz forever.
-        capabilities_by_address: dict[tuple[str, int], frozenset[str]] = {}
+        descriptions_by_address: dict[tuple[str, int], WyomingDescription | None] = {}
         retained: dict[str, ProviderEndpoint] = {}
         for role, endpoint in self._selected.items():
             address = (endpoint.host, endpoint.port)
-            if address not in capabilities_by_address:
+            if address not in descriptions_by_address:
                 try:
-                    capabilities_by_address[address] = self._probe(*address)
+                    descriptions_by_address[address] = normalize_wyoming_description(
+                        self._probe(*address)
+                    )
                 except Exception:
-                    capabilities_by_address[address] = frozenset()
-            if role in capabilities_by_address[address]:
-                retained[role] = endpoint
+                    descriptions_by_address[address] = None
+                description = descriptions_by_address[address]
+                if description is None or not description.capabilities:
+                    self._record_unavailable_provider(endpoint.slug, "describe_unavailable")
+                else:
+                    self._record_verified_provider(
+                        ProviderEndpoint(
+                            endpoint.slug,
+                            endpoint.name,
+                            endpoint.host,
+                            endpoint.port,
+                            description.capabilities,
+                            description.voices,
+                        )
+                    )
+            description = descriptions_by_address[address]
+            if description is not None and role in description.capabilities:
+                retained[role] = ProviderEndpoint(
+                    endpoint.slug,
+                    endpoint.name,
+                    endpoint.host,
+                    endpoint.port,
+                    description.capabilities,
+                    description.voices,
+                )
             else:
                 previous = self._last_decisions[role]
                 self._last_decisions[role] = ProviderDecision(

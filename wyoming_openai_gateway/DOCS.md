@@ -1,6 +1,6 @@
 # Wyoming OpenAI Gateway
 
-**Version 0.1.1 — prerelease.** This community app exposes existing Wyoming
+**Version 0.1.2 — prerelease.** This community app exposes existing Wyoming
 speech providers through OpenAI-compatible APIs. Both architecture images pass
 CI build and no-provider smoke tests; end-to-end testing on real HAOS is pending.
 
@@ -48,6 +48,12 @@ at least one selected provider and a serving gateway child. Watchdog uses
 liveness, so an absent speech provider does not cause a restart loop.
 
 ## Network and security
+
+At the default **INFO** log level, the **Log** tab shows verified Wyoming server
+slugs/hosts/ports, selected TTS/STT endpoints, and installed voice IDs/languages.
+Startup, metadata changes, outages, and recovery are logged without repeating
+unchanged discovery polls. Catalog output is bounded; use `/v1/voices` for the
+full gateway voice list. This logs discovery/selection, not every speech request.
 
 Port 8555 is an unauthenticated HTTP API. Publish it only to a trusted LAN.
 Never forward it directly to the public internet. For remote use, prefer a VPN

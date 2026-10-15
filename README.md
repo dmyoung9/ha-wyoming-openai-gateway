@@ -2,7 +2,7 @@
 
 **An unofficial Home Assistant community app that exposes your existing Wyoming Piper and Whisper services through OpenAI-compatible speech APIs.**
 
-> **[0.1.1 prerelease](https://github.com/dmyoung9/ha-wyoming-openai-gateway/releases/tag/v0.1.1)** — available for installation and testing. See [validation and known limitations](#validation-and-known-limitations) for what has been verified.
+> **[0.1.2 prerelease](https://github.com/dmyoung9/ha-wyoming-openai-gateway/releases/tag/v0.1.2)** — available for installation and testing. See [validation and known limitations](#validation-and-known-limitations) for what has been verified.
 
 [![Add repository to My Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdmyoung9%2Fha-wyoming-openai-gateway)
 
@@ -170,6 +170,27 @@ Use a full Supervisor slug to select a specific provider, or `none` to disable
 a role. Leave `auto` for automatic selection. Save options and restart the app
 after changing them. Setting `discovery: false` disables both providers.
 
+## Provider logging
+
+Leave `log_level` at **INFO** and open the app's **Log** tab. Timestamped entries
+show verified Wyoming servers, selected TTS/STT destinations, and advertised
+installed voice IDs with their languages. For example:
+
+```text
+Verified Wyoming server slug=core_piper host=core-piper port=10200 capabilities=tts
+Available Wyoming voice for core_piper: id=en_US-demo-medium languages=en-US
+Selected TTS Wyoming endpoint slug=core_piper host=core-piper port=10200
+```
+
+Entries appear at startup and when providers, selections, or voice catalogs
+change, including outages and recovery—not on every unchanged discovery poll.
+Verification describes a successful Wyoming `Describe` connection; speech
+connections are made on demand. Catalog output is bounded; `/v1/voices` returns
+the gateway's full voice list. Voice summaries also appear in `/status`.
+
+This does **not** enable request-content logging: speech text, audio, Supervisor
+tokens, and arbitrary provider metadata remain excluded.
+
 ## Troubleshooting
 
 **The app says no Piper or Whisper was found.** Verify the speech apps are installed and **started**, not merely installed, and check their logs. Discovery retries automatically. Inspect **Open Web UI** for the current discovery status.
@@ -215,14 +236,15 @@ Issue tracker: https://github.com/dmyoung9/ha-wyoming-openai-gateway/issues
 
 ## Validation and known limitations
 
-**Verified:** 28 automated tests, synthetic Wyoming TTS/STT through the real
+**Verified:** 33 automated tests, synthetic Wyoming TTS/STT through the real
 pinned gateway and wrapper, Supervisor metadata schemas, lint and security
 checks, and successful **amd64 and arm64 image builds and no-provider smoke
 tests** in [CI](https://github.com/dmyoung9/ha-wyoming-openai-gateway/actions).
 
-**Still pending:** first end-to-end installation on real HAOS with Piper and
-Whisper, including Supervisor permissions, internal DNS, and provider recovery.
-That is why 0.1.1 is a prerelease: use a test appliance or a recoverable setup
+The owner has confirmed working discovery after the 0.1.1 permission fix on a
+Home Assistant appliance. **Still pending:** the complete real-provider audio,
+outage/recovery, and dual-architecture HAOS acceptance matrix.
+That is why 0.1.2 is a prerelease: use a test appliance or a recoverable setup
 and report results before relying on it for daily use. Discovery is limited to
 the adapters and metadata described above; arbitrary LAN servers and MP3 output
 are not supported.
