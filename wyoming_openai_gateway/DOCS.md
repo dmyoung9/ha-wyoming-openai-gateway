@@ -1,6 +1,6 @@
 # Wyoming OpenAI Gateway
 
-**Version 0.1.0 — prerelease.** This community app exposes existing Wyoming
+**Version 0.1.1 — prerelease.** This community app exposes existing Wyoming
 speech providers through OpenAI-compatible APIs. Both architecture images pass
 CI build and no-provider smoke tests; end-to-end testing on real HAOS is pending.
 
@@ -15,6 +15,10 @@ The pinned upstream commit `a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae` provides
 WAV speech output. MP3 output is not supported.
 
 ## Options
+
+Upgrading from 0.1.0 fixes an inventory permission error: discovery now uses
+`/supervisor/info` instead of the restricted `/addons` list. Supervisor access
+remains at the `default` role. Existing options and host port mappings are kept.
 
 | Option | Default | Meaning |
 | --- | --- | --- |

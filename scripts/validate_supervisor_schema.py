@@ -8,7 +8,9 @@ test.
 from pathlib import Path
 
 import yaml
+from supervisor.api.middleware.security import _V1_PATTERNS
 from supervisor.apps.validate import SCHEMA_APP_CONFIG, SCHEMA_APP_TRANSLATIONS
+from supervisor.const import ROLE_DEFAULT
 from supervisor.store.validate import SCHEMA_REPOSITORY_CONFIG
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -32,7 +34,12 @@ def main() -> None:
 
     translations = read_yaml(app_dir / "translations" / "en.yaml")
     SCHEMA_APP_TRANSLATIONS(translations)
+    default_role = _V1_PATTERNS.role_access[ROLE_DEFAULT]
+    for path in ("/supervisor/info", "/addons/core_piper/info", "/addons/core_whisper/info"):
+        if default_role.fullmatch(path) is None:
+            raise ValueError(f"Discovery endpoint is not permitted by the default role: {path}")
     print("Pinned Home Assistant Supervisor repository/app/translation schemas passed.")
+    print("Discovery endpoints are permitted by the pinned Supervisor default-role ACL.")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 **An unofficial Home Assistant community app that exposes your existing Wyoming Piper and Whisper services through OpenAI-compatible speech APIs.**
 
-> **[0.1.0 prerelease](https://github.com/dmyoung9/ha-wyoming-openai-gateway/releases/tag/v0.1.0)** — available for installation and testing. See [validation and known limitations](#validation-and-known-limitations) for what has been verified.
+> **[0.1.1 prerelease](https://github.com/dmyoung9/ha-wyoming-openai-gateway/releases/tag/v0.1.1)** — available for installation and testing. See [validation and known limitations](#validation-and-known-limitations) for what has been verified.
 
 [![Add repository to My Home Assistant](https://my.home-assistant.io/badges/supervisor_add_addon_repository.svg)](https://my.home-assistant.io/redirect/supervisor_add_addon_repository/?repository_url=https%3A%2F%2Fgithub.com%2Fdmyoung9%2Fha-wyoming-openai-gateway)
 
@@ -75,6 +75,10 @@ If Piper or Whisper is not installed, install it from Home Assistant's official 
 ## How automatic discovery works
 
 At startup, the gateway queries Supervisor for running apps and checks supported candidates with a Wyoming `Describe` request. It connects over the internal app network, so the standard setup does not require host or port entry.
+
+Inventory comes from `/supervisor/info`, which is accessible with the app's
+least-privileged `default` role. Version 0.1.1 fixes a permission error in 0.1.0
+that prevented discovery by requesting the restricted `/addons` list instead.
 
 - **One Piper + one Whisper:** Both are selected automatically.
 - **Piper only:** TTS works; STT endpoints are unavailable until Whisper is installed/running.
@@ -184,6 +188,11 @@ after changing them. Setting `discovery: false` disables both providers.
 
 **App cannot read Supervisor inventory.** Check the app logs for token/API permission errors. Supervisor access is configured by the package; do not paste a Supervisor token into the app options or an issue report.
 
+If running 0.1.0 with `supervisor_http_error` in `/status`, update to 0.1.1 and
+restart. Newer status responses include `supervisor_http_status` to distinguish
+HTTP failures without exposing credentials. Keep `8099` as your client port if
+you mapped the app's internal `8555/tcp` to host port `8099`.
+
 **The app does not appear in the store.** Verify the repository URL, refresh the
 store using its **Check for updates** action, and check Supervisor logs for
 repository-loading errors. This is a community app repository, not HACS.
@@ -206,14 +215,14 @@ Issue tracker: https://github.com/dmyoung9/ha-wyoming-openai-gateway/issues
 
 ## Validation and known limitations
 
-**Verified:** 26 automated tests, synthetic Wyoming TTS/STT through the real
+**Verified:** 28 automated tests, synthetic Wyoming TTS/STT through the real
 pinned gateway and wrapper, Supervisor metadata schemas, lint and security
 checks, and successful **amd64 and arm64 image builds and no-provider smoke
 tests** in [CI](https://github.com/dmyoung9/ha-wyoming-openai-gateway/actions).
 
 **Still pending:** first end-to-end installation on real HAOS with Piper and
 Whisper, including Supervisor permissions, internal DNS, and provider recovery.
-That is why 0.1.0 is a prerelease: use a test appliance or a recoverable setup
+That is why 0.1.1 is a prerelease: use a test appliance or a recoverable setup
 and report results before relying on it for daily use. Discovery is limited to
 the adapters and metadata described above; arbitrary LAN servers and MP3 output
 are not supported.

@@ -1,6 +1,6 @@
 # Implementation and release evidence
 
-Version 0.1.0 is a prerelease for initial HAOS testing, not a stable or
+Version 0.1.1 is a prerelease for initial HAOS testing, not a stable or
 HAOS-validated release. `IMPLEMENTATION_PLAN.md` remains the original design.
 
 ## Implemented design
@@ -21,7 +21,7 @@ HAOS-validated release. `IMPLEMENTATION_PLAN.md` remains the original design.
 
 ## Evidence and limits
 
-Local verification on Python 3.13 passed 26 tests, including synthetic Wyoming
+Local verification on Python 3.13 passed 28 tests, including synthetic Wyoming
 WAV synthesis and multipart transcription through the real pinned gateway and
 wrapper (both roles and each role alone), transcript-log suppression, discovery
 and ambiguity, startup deadlines, child recycling, request limits, and SIGTERM.
@@ -47,5 +47,15 @@ requirements; the aarch64 source build has now succeeded in CI.
 - [ ] HTTPS/mobile client compatibility and README-only troubleshooting.
 - [ ] Publish 1.0.0 only after the full plan's release acceptance criteria pass.
 
-The 0.1.0 prerelease makes a versioned build available for the appliance testing
+## First appliance report and discovery correction
+
+The first appliance installation reached the gateway frontend, but discovery
+reported `supervisor_http_error`. Inspection of Supervisor's actual access
+patterns revealed that the `default` role allows `/supervisor/info` and provider
+info requests, but not the `/addons` inventory list used by 0.1.0. Version 0.1.1
+uses the installed-app inventory in `/supervisor/info`, with a reproducing HTTP
+regression test and pinned Supervisor ACL validation. No privileges were added.
+Confirmation of provider discovery on the appliance remains pending.
+
+The 0.1.1 prerelease makes a versioned build available for the appliance testing
 above; it does not claim that those acceptance gates have passed.

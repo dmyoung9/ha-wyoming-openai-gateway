@@ -91,7 +91,7 @@ jobs:
           load: true
           tags: ha-wyoming-openai-gateway:ci
           build-args: |
-            BUILD_VERSION=0.1.0
+            BUILD_VERSION=0.1.1
             BUILD_ARCH=${{ matrix.platform == 'linux/arm64' && 'aarch64' || 'amd64' }}
       - name: Verify the built image stays healthy without providers
         run: |

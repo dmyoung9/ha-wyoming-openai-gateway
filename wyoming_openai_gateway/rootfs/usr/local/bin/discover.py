@@ -178,7 +178,10 @@ class SupervisorClient:
             raise DiscoveryError("supervisor_invalid_json") from None
 
     def list_addons(self) -> list[dict[str, Any]]:
-        return parse_supervisor_addons(self.get_json("/addons"), include_unknown=True)
+        # The default Supervisor role permits /.../info, but rejects /addons.
+        # The v1 Supervisor info response contains the installed-app inventory
+        # with running states, without requiring manager/admin privileges.
+        return parse_supervisor_addons(self.get_json("/supervisor/info"), include_unknown=True)
 
     def get_addon_info(self, slug: str) -> dict[str, Any]:
         if not _SLUG_RE.fullmatch(slug):
@@ -766,6 +769,7 @@ class GatewaySupervisor:
             "asr": ProviderDecision("asr", "waiting"),
         }
         self._last_error: str | None = None
+        self._supervisor_http_status: int | None = None
         self._options_error = options_error
 
     @property
@@ -808,7 +812,7 @@ class GatewaySupervisor:
                         RETRY_BASE_SECONDS * (2 ** (self._discovery_failures - 1)),
                         RETRY_MAX_SECONDS,
                     )
-                    self._publish_discovery_failure(error.category)
+                    self._publish_discovery_failure(error.category, error.status_code)
                 except Exception as error:
                     # Do not log exception text: it may contain request data or
                     # credentials from a future adapter implementation.
@@ -876,6 +880,7 @@ class GatewaySupervisor:
             if decision.provider is not None
         }
         self._last_error = None
+        self._supervisor_http_status = None
         self._apply_selection()
         self._monitor_child()
         self._refresh_gateway_status()
@@ -1070,6 +1075,7 @@ class GatewaySupervisor:
             "discovery_enabled": self.options.discovery,
             "discovery_scope": DISCOVERY_SCOPE,
             "last_error": error_code or self._options_error or self._last_error,
+            "supervisor_http_status": self._supervisor_http_status,
             "tts": _decision_for_status(self._last_decisions["tts"]),
             "stt": _decision_for_status(self._last_decisions["asr"]),
             "gateway": {
@@ -1080,8 +1086,9 @@ class GatewaySupervisor:
         }
         self.status.replace(value)
 
-    def _publish_discovery_failure(self, category: str) -> None:
+    def _publish_discovery_failure(self, category: str, http_status: int | None = None) -> None:
         self._last_error = category
+        self._supervisor_http_status = http_status
         # Inventory availability says nothing about a remembered provider's
         # liveness. Recheck those endpoints even while Supervisor retries back
         # off, rather than trusting the child's process-only /healthz forever.

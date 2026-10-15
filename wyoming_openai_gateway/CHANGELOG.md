@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 — 2026-10-15 (prerelease)
+
+- Fix discovery failing with `supervisor_http_error`: obtain installed-app
+  inventory from `/supervisor/info`, permitted by Supervisor's `default` role,
+  instead of `/addons`, which requires broader privileges.
+- Preserve least-privileged access; no manager/admin role is needed.
+- Include the Supervisor HTTP status code in `/status` for safe diagnostics.
+- Add a regression test reproducing the inventory permission denial, plus CI
+  checks against the pinned Supervisor's actual default-role access patterns.
+- 28 automated tests pass. Existing options and network mappings are unchanged.
+
 ## 0.1.0 — 2026-10-15 (prerelease)
 
 - Initial community-app packaging around Wyoming-OpenAI-Gateway upstream commit
