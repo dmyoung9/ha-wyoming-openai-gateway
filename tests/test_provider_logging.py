@@ -141,9 +141,14 @@ def test_connection_and_voice_logs_are_transitions_not_every_poll(
         assert "core_piper" in caplog.text and "fr_FR-demo" in caplog.text
         assert len(launches) == 3
 
+        catalog[:] = [discovery.VoiceInfo("de_DE-demo", ("de-DE",))]
         manager._publish_discovery_failure("supervisor_unavailable")
         assert manager.status.snapshot()["ready"] is True
         assert manager.status.snapshot()["tts"]["provider"]["slug"] == "core_piper"
+        assert manager.status.snapshot()["tts"]["provider"]["voices"] == [
+            {"name": "de_DE-demo", "languages": ["de-DE"]},
+        ]
+        assert "de_DE-demo" in caplog.text and len(launches) == 3
     finally:
         manager._stop_gateway()
 

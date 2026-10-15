@@ -1419,6 +1419,12 @@ class GatewaySupervisor:
                     description.capabilities,
                     description.voices,
                 )
+                previous = self._last_decisions[role]
+                self._last_decisions[role] = ProviderDecision(
+                    role, previous.status, retained[role],
+                    tuple(retained[role] if candidate.slug == endpoint.slug else candidate
+                          for candidate in previous.candidates),
+                )
             else:
                 previous = self._last_decisions[role]
                 self._last_decisions[role] = ProviderDecision(
