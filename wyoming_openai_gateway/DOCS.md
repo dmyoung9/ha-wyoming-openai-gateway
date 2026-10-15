@@ -1,20 +1,18 @@
 # Wyoming OpenAI Gateway
 
-This is an **implemented, unreleased, experimental community app**. Packaging metadata and
-local build checks are not proof of a working Home Assistant OS deployment.
-The app has not yet been verified against a clean HAOS installation or across
-the supported architectures.
+**Version 0.1.0 — prerelease.** This community app exposes existing Wyoming
+speech providers through OpenAI-compatible APIs. Both architecture images pass
+CI build and no-provider smoke tests; end-to-end testing on real HAOS is pending.
 
-## What it is intended to do
+## What it does
 
 The app wraps [Wyoming-OpenAI-Gateway](https://github.com/Archmonger/Wyoming-OpenAI-Gateway)
-and is intended to forward OpenAI-style speech requests to already-running
+and forwards OpenAI-style speech requests to already-running
 Wyoming providers. It does not install, configure, or start Piper or Whisper.
 
 The default endpoint is port `8555`, with the API under `/v1/`.
-Upstream commit `a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae` documents WAV speech
-output. Do not assume MP3 support or successful TTS/STT until verified against
-the deployed upstream version and a real provider.
+The pinned upstream commit `a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae` provides
+WAV speech output. MP3 output is not supported.
 
 ## Options
 

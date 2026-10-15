@@ -32,5 +32,6 @@ regenerating the lock, and recording the provenance in `NOTICE.md`.
   failure/retry behavior when changing runtime behavior.
 - Do not add real network addresses, credentials, recordings, or Supervisor
   tokens to code, test fixtures, logs, or documentation.
-- Do not publish an image or release from CI. Release and publication require
-  a separately reviewed, explicit manual decision after HAOS acceptance tests.
+- Do not publish an image or release from CI. Publication requires an explicit
+  manual decision. Prereleases may be published for HAOS acceptance testing;
+  stable releases require the acceptance gates in `IMPLEMENTATION_STATUS.md`.
