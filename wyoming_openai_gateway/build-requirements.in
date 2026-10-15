@@ -1,0 +1,6 @@
+# Build backend prerequisites for source-only transitive dependencies such as
+# miniaudio on Python 3.13/aarch64. Installed before the runtime lock with
+# --no-build-isolation.
+setuptools>=80,<85
+wheel>=0.45,<1
+cffi>=1.17,<3

@@ -1,0 +1,45 @@
+name: Dependency and secret checks
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "19 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install audit tools
+        run: pip install pip-audit==2.10.1 detect-secrets==1.5.0
+      - name: Scan tracked source for secrets
+        run: |
+          detect-secrets scan --exclude-files '(requirements.lock|\.png$)' > secrets.json
+          python - <<'PY'
+          import json
+          import sys
+          findings = json.load(open("secrets.json"))["results"]
+          for path in findings:
+              print(f"Review possible secret in {path}")
+          sys.exit(bool(findings))
+          PY
+      - name: Audit pinned Python dependencies and generate their SBOM
+        run: >-
+          pip-audit -r wyoming_openai_gateway/requirements.lock
+          -r wyoming_openai_gateway/build-requirements.lock --disable-pip --no-deps
+          -f cyclonedx-json -o python-sbom.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: python-dependency-sbom
+          path: python-sbom.json
+          if-no-files-found: ignore

@@ -1,0 +1,17 @@
+{
+  "data": {
+    "slug": "community_wyoming_tts",
+    "state": "started",
+    "network": {
+      "tcp": {
+        "10200": 45678
+      }
+    },
+    "ports": {
+      "10200/tcp": 45678
+    },
+    "ports_description": {
+      "10200/tcp": "Public mapping; Wyoming uses the container's internal service port"
+    }
+  }
+}

@@ -1,0 +1,15 @@
+configuration:
+  discovery:
+    name: Automatic discovery
+    description: Find installed, running Wyoming providers through Home Assistant Supervisor.
+  tts_provider:
+    name: Text-to-speech provider
+    description: Use auto, none, or a discovered Supervisor app slug.
+  stt_provider:
+    name: Speech-to-text provider
+    description: Use auto, none, or a discovered Supervisor app slug.
+  log_level:
+    name: Log level
+    description: Logging verbosity. Never logs the Supervisor token or audio payloads.
+network:
+  "8555/TCP": OpenAI-compatible speech API. Unauthenticated; keep it on a trusted network.

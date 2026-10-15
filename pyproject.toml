@@ -1,0 +1,17 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+  "runtime: launches the gateway runtime in a subprocess",
+  "network: exercises loopback TCP/HTTP behavior",
+]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["wyoming_openai_gateway", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

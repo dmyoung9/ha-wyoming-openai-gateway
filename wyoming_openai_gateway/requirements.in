@@ -1,0 +1,10 @@
+# Runtime dependencies from upstream pyproject.toml at a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae
+fastapi>=0.115.0
+miniaudio>=1.71,<3.0
+pydantic>=2.0.0
+python-multipart>=0.0.18
+uvicorn[standard]>=0.32.0
+wyoming>=1.5.0
+# Discovery wrapper dependency; hatchling is needed to build the pinned source checkout.
+aiohttp>=3.10.0,<4.0.0
+hatchling>=1.27.0,<2.0.0

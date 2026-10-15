@@ -1,0 +1,121 @@
+name: CI
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Metadata, lint, and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned build and runtime dependencies and tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r wyoming_openai_gateway/build-requirements.lock
+          pip install --require-hashes --no-build-isolation -r wyoming_openai_gateway/requirements.lock
+          pip install yamllint==1.37.1 pytest==8.4.2 ruff==0.14.0
+      - name: Install the exact upstream source used by the image
+        run: |
+          git clone --filter=blob:none https://github.com/Archmonger/Wyoming-OpenAI-Gateway.git /tmp/upstream
+          git -C /tmp/upstream checkout --detach a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae
+          test "$(git -C /tmp/upstream rev-parse HEAD)" = a4e000b650dbc55cefe4e5c02e6f97a4ec4b0eae
+          pip install --no-deps --no-build-isolation /tmp/upstream
+      - name: Validate Home Assistant app metadata
+        run: python scripts/validate_metadata.py
+      - name: Check required app fields with Home Assistant's maintained helper
+        uses: home-assistant/actions/helpers/info@master
+        with:
+          path: wyoming_openai_gateway
+      - name: Lint YAML
+        run: yamllint -s .
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: wyoming_openai_gateway
+          severity: warning
+      - name: Ruff
+        run: >-
+          ruff check wyoming_openai_gateway/rootfs/usr/local/bin/discover.py
+          scripts/validate_metadata.py scripts/validate_supervisor_schema.py tests
+      - name: Tests
+        run: pytest -q tests
+
+  supervisor-schema:
+    name: Pinned Supervisor metadata schemas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Check out the pinned Supervisor source
+        run: |
+          git clone --filter=blob:none https://github.com/home-assistant/supervisor.git /tmp/supervisor
+          git -C /tmp/supervisor checkout --detach 9493d3a717a32e8f986bfd601356c664fb1ed810
+          test "$(git -C /tmp/supervisor rev-parse HEAD)" = 9493d3a717a32e8f986bfd601356c664fb1ed810
+      - name: Install the pinned Supervisor source dependencies
+        run: pip install -r /tmp/supervisor/requirements.txt
+      - name: Validate repository, app metadata, and translations
+        env:
+          PYTHONPATH: /tmp/supervisor
+        run: python scripts/validate_supervisor_schema.py
+
+  image-build:
+    name: Source image (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build locally without publishing
+        uses: docker/build-push-action@v6
+        with:
+          context: ./wyoming_openai_gateway
+          file: wyoming_openai_gateway/Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: false
+          load: true
+          tags: ha-wyoming-openai-gateway:ci
+          build-args: |
+            BUILD_VERSION=0.1.0
+            BUILD_ARCH=${{ matrix.platform == 'linux/arm64' && 'aarch64' || 'amd64' }}
+      - name: Verify the built image stays healthy without providers
+        run: |
+          docker run --detach --name gateway-smoke ha-wyoming-openai-gateway:ci
+          docker exec -i gateway-smoke python - <<'PY'
+          import time
+          import urllib.error
+          import urllib.request
+          for attempt in range(100):
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:8555/healthz", timeout=2) as response:
+                      assert response.status == 200
+                  break
+              except OSError:
+                  if attempt == 99:
+                      raise
+                  time.sleep(0.2)
+          try:
+              urllib.request.urlopen("http://127.0.0.1:8555/readyz", timeout=2)
+          except urllib.error.HTTPError as error:
+              assert error.code == 503
+          else:
+              raise AssertionError("image without providers must not report ready")
+          PY
+      - name: Clean up smoke container
+        if: always()
+        run: docker rm --force gateway-smoke || true

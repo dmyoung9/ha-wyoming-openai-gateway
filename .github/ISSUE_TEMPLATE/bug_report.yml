@@ -1,0 +1,39 @@
+name: Bug report
+description: Report a reproducible issue with the community app
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not include Supervisor tokens, credentials, public endpoint URLs, or private recordings.
+  - type: input
+    id: app_version
+    attributes:
+      label: App version
+    validations:
+      required: true
+  - type: input
+    id: haos_version
+    attributes:
+      label: Home Assistant OS and Supervisor versions
+    validations:
+      required: true
+  - type: textarea
+    id: providers
+    attributes:
+      label: Wyoming provider apps and versions
+      description: Say whether Piper, Whisper, or another Wyoming app is installed and running.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs
+      description: Remove tokens, credentials, private addresses, and any speech/audio data.
+    validations:
+      required: false

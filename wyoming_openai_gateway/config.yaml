@@ -1,0 +1,31 @@
+name: Wyoming OpenAI Gateway
+slug: wyoming_openai_gateway
+version: "0.1.0"
+description: OpenAI-compatible speech APIs backed by Home Assistant Wyoming apps
+url: https://github.com/dmyoung9/ha-wyoming-openai-gateway
+arch:
+  - amd64
+  - aarch64
+startup: services
+boot: auto
+stage: experimental
+init: false
+hassio_api: true
+hassio_role: default
+ports:
+  "8555/tcp": 8555
+ports_description:
+  "8555/tcp": OpenAI-compatible speech API (unauthenticated)
+watchdog: "http://[HOST]:[PORT:8555]/healthz"
+webui: "http://[HOST]:[PORT:8555]/status"
+timeout: 60
+options:
+  discovery: true
+  tts_provider: auto
+  stt_provider: auto
+  log_level: INFO
+schema:
+  discovery: bool
+  tts_provider: str
+  stt_provider: str
+  log_level: list(DEBUG|INFO|WARNING|ERROR)

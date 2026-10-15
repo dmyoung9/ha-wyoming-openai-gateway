@@ -1,0 +1,30 @@
+{
+  "data": {
+    "addons": [
+    {
+      "name": "Piper",
+      "slug": "core_piper",
+      "state": "started",
+      "installed": true
+    },
+    {
+      "name": "Whisper",
+      "slug": "core_whisper",
+      "state": "started",
+      "installed": true
+    },
+    {
+      "name": "Piper (stopped)",
+      "slug": "community_piper",
+      "state": "stopped",
+      "installed": true
+    },
+    {
+      "name": "Not installed",
+      "slug": "community_whisper",
+      "state": "started",
+      "installed": false
+    }
+    ]
+  }
+}
