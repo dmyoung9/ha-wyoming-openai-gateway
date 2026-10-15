@@ -203,6 +203,40 @@ tokens, and arbitrary provider metadata remain excluded.
 
 ## Troubleshooting
 
+### Missing microphone button in OpenChamber
+
+First turn on **Enable voice input** in OpenChamber's Voice settings and allow
+microphone access in your browser/device permissions. OpenChamber also hides the
+mic button when the browser cannot provide microphone capture APIs. A Home
+Assistant UI opened over plain HTTP on a LAN hostname/IP normally lacks the
+secure context those APIs require; this is separate from Whisper connectivity.
+
+**Preferred fix:** open the Home Assistant/OpenChamber UI over HTTPS with a
+trusted certificate. The speech gateway itself may still use its internal HTTP
+URL or the loopback proxy; the **browser-facing UI origin** controls microphone
+capture.
+
+For a **temporary Chrome-only workaround**, where the flag is available:
+
+1. Open `chrome://flags/#unsafely-treat-insecure-origin-as-secure` in Chrome.
+2. Add the exact **UI origin** from your address bar, for example
+   `http://homeassistant.local:8123`. Replace the hostname and port with the ones
+   you actually use; an IP address and a hostname are different origins. Do not
+   include a path, and do not enter the gateway/API or loopback-proxy URL.
+3. Set **Insecure origins treated as secure** to **Enabled** and relaunch Chrome.
+4. Open Home Assistant in that Chrome browser, return to OpenChamber, and allow
+   microphone access when prompted. Reload the page after changing permissions.
+
+This setting affects **Chrome only**, not the HA Companion app's embedded
+WebView. It does not bypass OS/browser microphone permissions or an iframe's
+permissions policy. Use only the specific trusted local origin, never a wildcard
+or an untrusted site. It bypasses the secure-context requirement but **does not
+encrypt HTTP traffic**. Revert the flag to **Default** after moving to HTTPS;
+if the flag is unavailable, use HTTPS instead. See
+[Chromium's testing guidance](https://www.chromium.org/Home/chromium-security/deprecating-powerful-features-on-insecure-origins/).
+
+### Gateway and connection issues
+
 **The app says no Piper or Whisper was found.** Verify the speech apps are installed and **started**, not merely installed, and check their logs. Discovery retries automatically. Inspect **Open Web UI** for the current discovery status.
 
 **More than one Piper or Whisper was found.** Open the status page, copy the intended provider's full slug into `tts_provider` or `stt_provider`, save, and restart the gateway.

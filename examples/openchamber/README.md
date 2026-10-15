@@ -12,6 +12,12 @@ The requested upstream configuration option is tracked in
 This hook is a temporary alternative, not a required part of the gateway app.
 Standalone clients that already accept the gateway URL do not need it.
 
+**Missing microphone button?** That can be a browser secure-context or permission
+problem, independent of this proxy and Whisper. See
+[the microphone troubleshooting steps](../../README.md#missing-microphone-button-in-openchamber)
+for the voice-input setting, HTTPS, and the temporary Chrome-only HTTP exception.
+The Chrome flag does not affect the HA Companion app's embedded WebView.
+
 ## Why the hook runs in the other container
 
 In add-on 3.2.3, [OpenChamber starts with `env -i` and an explicit variable list](https://github.com/magnusoverli/opencode/blob/3a9e1a45d1408fe098e08f20a54d79e2875882de/ha_opencode/rootfs/etc/s6-overlay/s6-rc.d/ha-openchamber/run#L15-L26).
