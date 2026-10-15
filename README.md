@@ -46,11 +46,11 @@ Automatic discovery is intended for **supported, running HAOS apps**. It is not 
 
 This is a Home Assistant **app**, not a HACS integration. You do not need HACS, Unraid, a second server, or Docker CLI access.
 
-## Installation (after the first release)
+## Installation (experimental; use a test appliance)
 
 ### Option A: Add to My Home Assistant (after publication and testing)
 
-1. Once this repository is public, click the **Add repository to My Home Assistant** button above. The button currently points to the proposed repository URL and is not evidence that the repo or app is available.
+1. Click the **Add repository to My Home Assistant** button above. This installs from experimental source, not a validated release; the button flow still requires real HAOS testing.
 2. Choose your Home Assistant instance and confirm adding the community app repository.
 3. Go to **Settings > Apps > Install app** and locate **Wyoming OpenAI Gateway**.
 4. Select **Install**, then **Start**. Enable **Start on boot** and **Watchdog** if offered.
@@ -67,7 +67,7 @@ The button adds the **repository**; it does not silently install or start the ap
 
 ### Set up Piper and Whisper
 
-If Piper or Whisper is not installed, install it from Home Assistant's official app store, start it, and finish its normal configuration. The gateway is designed to detect supported running apps, but automatic detection has not yet been validated. The gateway does not install or start those apps on your behalf.
+If Piper or Whisper is not installed, install it from Home Assistant's official app store, start it, and finish its normal configuration. Detection still needs validation on HAOS. The gateway does not install or start those apps on your behalf.
 
 ## How automatic discovery works
 
@@ -146,7 +146,7 @@ curl -i http://HOME_ASSISTANT_IP:8555/healthz
 curl -i http://HOME_ASSISTANT_IP:8555/readyz
 ```
 
-The pinned upstream source documents **WAV** as its TTS output format. This package does not claim MP3 support. API interoperability and output media types have not yet been verified here; clients that strictly require MP3 may need transcoding or an intermediary.
+The pinned upstream source documents **WAV** as its TTS output format, verified locally with a synthetic Wyoming provider. This package does not claim MP3 support. Real HAOS/client interoperability remains unverified; clients that strictly require MP3 may need transcoding or an intermediary.
 
 ## Configuration
 
@@ -163,7 +163,7 @@ These option names and behavior may change before a release. Do not depend on ze
 
 ## Troubleshooting
 
-**The app says no Piper or Whisper was found.** If testing a development build, verify the speech apps are installed and **started**, not merely installed, and check their logs. Discovery retry behavior is not yet validated.
+**The app says no Piper or Whisper was found.** Verify the speech apps are installed and **started**, not merely installed, and check their logs. Discovery retries automatically; live HAOS recovery still needs testing.
 
 **More than one Piper or Whisper was found.** The design intends explicit provider selection rather than an arbitrary choice. Confirm the current implementation supports this before relying on the option.
 
