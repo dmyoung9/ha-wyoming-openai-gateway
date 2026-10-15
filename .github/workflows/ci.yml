@@ -82,7 +82,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - name: Build locally without publishing
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: ./wyoming_openai_gateway
           file: wyoming_openai_gateway/Dockerfile
