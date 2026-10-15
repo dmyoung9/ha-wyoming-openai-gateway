@@ -65,6 +65,10 @@ jobs:
           test "$(git -C /tmp/supervisor rev-parse HEAD)" = 9493d3a717a32e8f986bfd601356c664fb1ed810
       - name: Install the pinned Supervisor source dependencies
         run: pip install -r /tmp/supervisor/requirements.txt
+      - name: Install native library used by Supervisor API imports
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends libpulse0
       - name: Validate repository, app metadata, and translations
         env:
           PYTHONPATH: /tmp/supervisor
